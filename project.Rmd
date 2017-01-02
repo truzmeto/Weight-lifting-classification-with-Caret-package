@@ -1,0 +1,108 @@
+---
+title: "Coursera MOCC PML Final Project"
+author: "T. Ruzmetov"
+date: "December 28, 2016"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Executive Summary
+
+By using data from accelerometers of 6 participants the goal of the project is to predict the manner in which exercise was done. First, some data cleansing is performed by getting rid of unnecessary variables such as user name and row index... Second, number of covariates are reduced by eliminating those with high fraction of "NA's" and those with near zero variance. Third, given training set is split into sub training and validation sets in order to evaluate and improve the performance of prediction. Models are built using "Decision Trees" and "Random Forest" algorithms. 
+
+## Personal Activity Data
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+```{r , echo=TRUE}
+library(knitr); library(ggplot2) 
+library(caret); library(rpart); library(rpart.plot)
+library(RColorBrewer); library(rattle);library(randomForest)
+test_set <- read.csv("data/pml-testing.csv",na.strings=c("NA","", "#DIV/0!"))
+train_set <- read.csv("data/pml-training.csv", na.strings=c("NA","", "#DIV/0!"))
+set.seed(1001)
+```
+
+##Data Cleaning
+
+1. Removing first 7 columns and features with near zero variability.
+
+```{r}
+train_set <- train_set[c(-1,-2,-3,-4,-5,-6,-7)]
+nzv_train <- nearZeroVar(train_set, saveMetrics=TRUE, allowParallel = TRUE)
+new_names <- rownames(nzv_train[nzv_train$nzv == FALSE,])
+data_train <- train_set[new_names]
+```
+
+2. Getting rid of columns with high fraction of missing values.
+
+```{r}
+row_size <- nrow(data_train)
+#eliminating features which contain more than 80% NA's
+data_train <- data_train[as.numeric(colSums(is.na(data_train)))/row_size < 0.8]
+#now we make sure that test set has same features as train set
+new_names <- names(data_train)
+tmp_names <- new_names[1:length(new_names)-1]
+data_test <- test_set[tmp_names]
+dim(data_train); dim(data_test)
+```
+
+## Cross Validation
+
+Here I splite provided training data into sub training(70%) and validation(30%) sets.
+
+```{r}
+train_indx <- createDataPartition(y=data_train$classe, p=0.7, list=FALSE)
+Training <- data_train[train_indx, ]; CrossVal <- data_train[-train_indx, ]
+```
+
+
+##ML: Decision Trees
+
+```{r, fig.width=14, fig.height=8, eval=TRUE,echo=TRUE}
+#building a model with trees
+model_trees <- rpart(classe ~ ., data=Training, method="class")
+fancyRpartPlot(model_trees, sub="Tree Diagram")
+
+#predicting
+prediction_trees <- predict(model_trees, CrossVal, type = "class")
+confusionMatrix(prediction_trees, CrossVal$classe)
+```
+
+##ML: Random Forest
+
+```{r}
+model_rf <- randomForest(classe ~. , data=Training)
+prediction_rf <- predict(model_rf, CrossVal, type = "class")
+confusionMatrix(prediction_rf, CrossVal$classe)
+
+```
+
+```{r}
+#Here is the little trick to make sure that factor variables in
+#the training and test data have same levels. Turns out that "RandomForest"
+#method is very sensetive to such a difference.
+data_test <- rbind(Training[1, -length(Training)] , data_test)
+data_test <- data_test[-1,]
+
+prediction_trees_test <- predict(model_trees, data_test, type = "class")
+prediction_rf_test <- predict(model_rf, data_test, type = "class")
+
+prediction_trees_test
+prediction_rf_test 
+```
+
+Using 30% of given training set calculated out of sample error is:
+
+1. Decision Trees model:  err = 0.36
+
+2. Random Forest model:   err = 0.005
+
+##Conclusion
+
+By performing a classification into five different classes on weight lifting activity data using two machine learning methods such as "Decision Trees" and "Random Forest" it's been shown that both models are robust given carefully selected features, but the latter one is much more accurate in prediction and somewhat slower in performance.
+
